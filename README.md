@@ -19,7 +19,7 @@ Using a URL scheme under Mac and Windows with a single instance application
 This is completely explained in [this article](http://blog.xojo.com/2016/05/09/let-your-os-x-desktop-app-react-to-custom-uris/) on the xojo blog.
 The application recieves url scheme parameters through the HandleAppleEvent.
 ### Windows
-The registry entry is explained in [this article](http://blog.xojo.com/2016/05/09/let-your-os-x-desktop-app-react-to-custom-uris/) on the xojo blog.
+The registry entry is explained in [this article](http://blog.xojo.com/2016/08/16/custom-uri-schemes-on-windows/) on the xojo blog.
 Just using the registry entry, a new instance of your application will always be started when calling the url scheme. To avoid this, a IPCSocket is used to create a single instance application. If a new instance is started, it tries to connect to the IPCSocket to check if another instance is listening. If this fails, it's the only running instance and starts listening to the IPCSocket. If connecting to the IPCSocket succeeds, another instance is already running and the one just started will pass it's url scheme parameters and close itself.
 The listening instance recieves passed url scheme parameters through the DataAvaiableEvent.
 
