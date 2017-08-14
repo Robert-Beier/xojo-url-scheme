@@ -87,13 +87,40 @@ Protected Class SIAController
 	#tag EndMethod
 
 	#tag Method, Flags = &h0
-		Function parseUrlSchemeWindows(appCall as String) As String
+		Function parseUrlSchemeWindows(callText as String) As Text
 		  // "C:\url-scheme.exe" "myscheme:hello_world" -> hello_world
-		  try
-		    dim appCallParts() as String = appCall.Split(" ")
-		    dim urlSchemeParts() as String = appCallParts(1).ReplaceAll("""", "").Split(":")
-		    return urlSchemeParts(1)
-		  catch exc as OutOfBoundsException
+		  // parser also handles spaces in path ("C:\url scheme.exe" "myscheme:hello_world")->(hello_world) as well as colons in url scheme ("C:\url-scheme.exe" "myscheme:hello_world:2")->(hello_world:2)
+		  // parser can't handle multiple  double quotes after another, yet. Will be fixed
+		  // but parser can't recognize, if there is more than one command line argument ("C:\url-scheme.exe" "myscheme:hello_world" "something")->(hello_world" "something)
+		  return callText.Encoding.internetName.ToText
+		  dim callTextParts() As Text = callText.ToText.Split("""")
+		  dim urlSchemeParts() As Text
+		  dim urlScheme As Text
+		  dim urlSchemeParams As Text
+		  
+		  if callTextParts.Ubound > 3 then
+		    if callTextParts.Ubound = 4 and callTextParts(3).Length > 0  then
+		      urlScheme = callTextParts(3)
+		    else
+		      call callTextParts.Pop
+		      for indexRmCallTextParts As Integer = 0 to 2
+		        callTextParts.Remove(0)
+		      next
+		      urlScheme = Text.Join(callTextParts, """")
+		    end
+		    urlSchemeParts = urlScheme.Split(":")
+		    if urlSchemeParts.Ubound > 0  then
+		      if urlSchemeParts.Ubound = 1 and urlSchemeParts(1).Length > 0  then
+		        urlSchemeParams = urlSchemeParts(1)
+		      else
+		        urlSchemeParts.Remove(0)
+		        urlSchemeParams = Text.Join(urlSchemeParts, ":")
+		      end
+		      return urlSchemeParams
+		    else
+		      return ""
+		    end
+		  else
 		    return ""
 		  end
 		End Function
