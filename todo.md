@@ -1,3 +1,3 @@
 # todo list
 
-- no error if connection breaks because other instance starts listening too
+- fix windows args parsing (bug with spaces in path)

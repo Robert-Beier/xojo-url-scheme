@@ -8,16 +8,17 @@ Protected Class SIAController
 
 	#tag Method, Flags = &h21
 		Private Sub ConnectedEvent(thisSocket As IPCSocket)
-		  // if other instance is already listening, parse arguments and close
-		  if not answerReceived then
-		    answerReceived = true
+		  // if other instance is already listening, parse parameters and close
+		  if not responseRecieved then
+		    responseRecieved = true
 		    otherInstanceExists = true
-		    dim urlSchemeArgs as String = parseUrlSchemeWindows(System.CommandLine)
-		    if urlSchemeArgs.Len > 0 then
-		      siaSocket.Write(urlSchemeArgs)
+		    dim urlSchemeParams as String = parseUrlSchemeWindows(System.CommandLine)
+		    if urlSchemeParams.Len > 0 then
+		      siaSocket.Write(urlSchemeParams)
 		    end
 		    siaSocket.Flush
 		    siaSocket.Close
+		    app.siaReactToResponse
 		    app.initApplication
 		  end
 		End Sub
@@ -26,7 +27,11 @@ Protected Class SIAController
 	#tag Method, Flags = &h21
 		Private Sub DataAvailableEvent(thisSocket As IPCSocket)
 		  // url scheme is recieved here on windows
-		  app.useParams(thisSocket.ReadAll)
+		  if app.initApplicationDone then
+		    app.siaUseParams(thisSocket.ReadAll)
+		  else
+		    app.siaLastParamsBeforeInit = thisSocket.ReadAll
+		  end
 		End Sub
 	#tag EndMethod
 
@@ -34,27 +39,27 @@ Protected Class SIAController
 		Private Sub ErrorEvent(thisSocket As IPCSocket)
 		  // error 102 always occurs if another instance connects, passes an url and closes connection -> retry listening
 		  // error 103 is expected if other instance is already running -> pass url and close connection
-		  // error 105 occurs if other instance did not close listening connection before closing -> should work on retry listening
+		  // error 105 occurs if other instance is still listening (also if instance is closed, but did not close listening socket) -> should work on retry listening
 		  
-		  dim siaErrorCode as Integer
-		  siaErrorCode = thisSocket.LastErrorCode
+		  dim siaErrorCode as Integer = thisSocket.LastErrorCode
 		  // count unexpected errors in order to not get stuck in a loop by always retrying
 		  if not siaErrorCode = 103 and not siaErrorCode = 102 then
 		    errorCounter = errorCounter + 1
 		    if errorCounter >= maxErrors then
 		      siaSocket.Close
+		      app.initApplication // if something goes wrong with the IPCSocket, the application should still start
 		      return
 		    end
 		  end
 		  
 		  // if no other instance is listening, make this the only instance and init application after listening
 		  if siaErrorCode = 103 then
-		    answerReceived = true
+		    responseRecieved = true
 		    otherInstanceExists = false
 		  end
 		  
 		  // try reconnect/listen on all other error codes too
-		  if not answerReceived then
+		  if not responseRecieved then
 		    siaSocket.Close
 		    siaSocket.Connect
 		  elseif not otherInstanceExists then
@@ -63,6 +68,7 @@ Protected Class SIAController
 		  end
 		  
 		  if siaErrorCode = 103 then
+		    app.siaReactToResponse
 		    app.initApplication
 		  end
 		End Sub
@@ -133,10 +139,6 @@ Protected Class SIAController
 	#tag EndMethod
 
 
-	#tag Property, Flags = &h0
-		answerReceived As Boolean
-	#tag EndProperty
-
 	#tag Property, Flags = &h21
 		Private errorCounter As Integer
 	#tag EndProperty
@@ -149,17 +151,16 @@ Protected Class SIAController
 		otherInstanceExists As Boolean
 	#tag EndProperty
 
+	#tag Property, Flags = &h0
+		responseRecieved As Boolean
+	#tag EndProperty
+
 	#tag Property, Flags = &h21
 		Private siaSocket As IPCSocket
 	#tag EndProperty
 
 
 	#tag ViewBehavior
-		#tag ViewProperty
-			Name="answerReceived"
-			Group="Behavior"
-			Type="Boolean"
-		#tag EndViewProperty
 		#tag ViewProperty
 			Name="Index"
 			Visible=true
@@ -182,6 +183,11 @@ Protected Class SIAController
 		#tag EndViewProperty
 		#tag ViewProperty
 			Name="otherInstanceExists"
+			Group="Behavior"
+			Type="Boolean"
+		#tag EndViewProperty
+		#tag ViewProperty
+			Name="responseRecieved"
 			Group="Behavior"
 			Type="Boolean"
 		#tag EndViewProperty

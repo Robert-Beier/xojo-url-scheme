@@ -17,8 +17,10 @@ Inherits Application
 		  // url scheme is recieved here on mac
 		  if eventClass = "GURL" then
 		    dim urlSchemeParams as String = siaContr.parseUrlSchemeMac(theEvent)
-		    if urlSchemeArgs.Len > 0 then
-		      useParams(urlSchemeParams)
+		    if initApplicationDone then
+		      siaUseParams(urlSchemeParams)
+		    else
+		      siaLastParamsBeforeInit = urlSchemeParams
 		    end
 		    return true
 		  end if
@@ -43,21 +45,13 @@ Inherits Application
 
 	#tag Method, Flags = &h0
 		Sub initApplication()
-		  // application source code starts here after SIA check
-		  if siaContr <> nil then
-		    if not siaContr.answerReceived then
-		      log("no answer received")
-		    else
-		      log("answer received")
-		      if siaContr.otherInstanceExists then
-		        quit
-		      else
-		        dim urlSchemeParams as String = siaContr.parseUrlSchemeWindows(System.CommandLine)
-		        if urlSchemeArgs.Len > 0 then
-		          useParams(urlSchemeParams)
-		        end
-		      end
-		    end
+		  // application source code starts here
+		  initApplicationDone = true
+		  
+		  // calling siaUseParams may only make sense after full initialization
+		  // if more than one set of params should be safed and used, create an array for that
+		  if siaLastParamsBeforeInit.len > 0 then
+		    siaUseParams(siaLastParamsBeforeInit)
 		  end
 		End Sub
 	#tag EndMethod
@@ -69,14 +63,42 @@ Inherits Application
 	#tag EndMethod
 
 	#tag Method, Flags = &h0
-		Sub useParams(params as String)
+		Sub siaReactToResponse()
+		  // react to response on socket request
+		  // should only be called under windows
+		  // siaReactToResponse should be called before initApplication to not initialize completely before closing automatically
+		  if siaContr <> nil then
+		    if not siaContr.responseRecieved then
+		      log("no answer received")
+		    else
+		      log("answer received")
+		      if siaContr.otherInstanceExists then
+		        quit
+		      else
+		        siaLastParamsBeforeInit = siaContr.parseUrlSchemeWindows(System.CommandLine)
+		      end
+		    end
+		  end
+		End Sub
+	#tag EndMethod
+
+	#tag Method, Flags = &h0
+		Sub siaUseParams(params as String)
 		  log(params)
 		End Sub
 	#tag EndMethod
 
 
+	#tag Property, Flags = &h0
+		initApplicationDone As Boolean
+	#tag EndProperty
+
 	#tag Property, Flags = &h21
 		Private siaContr As SIAController
+	#tag EndProperty
+
+	#tag Property, Flags = &h0
+		siaLastParamsBeforeInit As String
 	#tag EndProperty
 
 
@@ -96,6 +118,16 @@ Inherits Application
 
 
 	#tag ViewBehavior
+		#tag ViewProperty
+			Name="initApplicationDone"
+			Group="Behavior"
+			Type="Boolean"
+		#tag EndViewProperty
+		#tag ViewProperty
+			Name="siaLastParamsBeforeInit"
+			Group="Behavior"
+			Type="String"
+		#tag EndViewProperty
 	#tag EndViewBehavior
 End Class
 #tag EndClass
