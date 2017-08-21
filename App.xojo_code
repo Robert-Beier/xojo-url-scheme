@@ -4,26 +4,18 @@ Inherits Application
 	#tag Event
 		Sub Close()
 		  // IPCSocket has to be closed or there will be an error in the next listening instance
-		  #if TargetWindows then
-		    if siaContr <> nil then
-		      siaContr.close
-		    end
-		  #endif
+		  if siaContr <> nil then
+		    siaContr.close
+		  end
 		End Sub
 	#tag EndEvent
 
 	#tag Event
 		Function HandleAppleEvent(theEvent As AppleEvent, eventClass As String, eventID As String) As Boolean
 		  // url scheme is recieved here on mac
-		  if eventClass = "GURL" then
-		    dim urlSchemeParams as String = siaContr.parseUrlSchemeMac(theEvent)
-		    if initApplicationDone then
-		      siaUseParams(urlSchemeParams)
-		    else
-		      siaLastParamsBeforeInit = urlSchemeParams
-		    end
-		    return true
-		  end if
+		  if eventClass = "GURL"  and siaContr <> nil then
+		    return siaContr.HandleAppleEvent(theEvent, eventClass)
+		  end
 		  return false
 		End Function
 	#tag EndEvent
@@ -31,74 +23,33 @@ Inherits Application
 	#tag Event
 		Sub Open()
 		  siaContr = new SIAController
-		  // single instance application is only needed on windows
-		  // on MacOS url schemes work with the handleAppleEvent
+		  AddHandler siaContr.DataAvailable, AddressOf app.siaUseParams
+		  AddHandler siaContr.InitApplication, AddressOf app.initApplication
 		  #if TargetWindows then
 		    siaContr.registerUrlSchemeWindows // should be moved to installer in final application
-		    siaContr.searchOtherInstances
-		  #elseif TargetMacOS
-		    initApplication
 		  #endif
+		  siaContr.searchOtherInstances
 		End Sub
 	#tag EndEvent
 
 
-	#tag Method, Flags = &h0
-		Sub initApplication()
-		  // application source code starts here
-		  initApplicationDone = true
-		  
-		  // calling siaUseParams may only make sense after full initialization
-		  // if more than one set of params should be safed and used, create an array for that
-		  if siaLastParamsBeforeInit.len > 0 then
-		    siaUseParams(siaLastParamsBeforeInit)
-		  end
+	#tag Method, Flags = &h21
+		Private Sub initApplication(thisSiaContr As SIAController)
+		  // initApplication is required, because searchOtherInstances is an async method and the application would continue initializing in the open event, before knowing, if it even should
+		  LogWindow.LogListBox.AddRow("initApplication")
+		  siaContr.initApplicationDone
 		End Sub
 	#tag EndMethod
 
 	#tag Method, Flags = &h21
-		Private Sub log(logMessage as String)
-		  LogWindow.LogListBox.AddRow(logMessage)
+		Private Sub siaUseParams(thisSiaContr As SIAController, params as String)
+		  LogWindow.LogListBox.AddRow(params)
 		End Sub
 	#tag EndMethod
 
-	#tag Method, Flags = &h0
-		Sub siaReactToResponse()
-		  // react to response on socket request
-		  // should only be called under windows
-		  // siaReactToResponse should be called before initApplication to not initialize completely before closing automatically
-		  if siaContr <> nil then
-		    if not siaContr.responseRecieved then
-		      log("no answer received")
-		    else
-		      log("answer received")
-		      if siaContr.otherInstanceExists then
-		        quit
-		      else
-		        siaLastParamsBeforeInit = siaContr.parseUrlSchemeWindows(System.CommandLine)
-		      end
-		    end
-		  end
-		End Sub
-	#tag EndMethod
-
-	#tag Method, Flags = &h0
-		Sub siaUseParams(params as String)
-		  log(params)
-		End Sub
-	#tag EndMethod
-
-
-	#tag Property, Flags = &h0
-		initApplicationDone As Boolean
-	#tag EndProperty
 
 	#tag Property, Flags = &h21
 		Private siaContr As SIAController
-	#tag EndProperty
-
-	#tag Property, Flags = &h0
-		siaLastParamsBeforeInit As String
 	#tag EndProperty
 
 
@@ -118,16 +69,6 @@ Inherits Application
 
 
 	#tag ViewBehavior
-		#tag ViewProperty
-			Name="initApplicationDone"
-			Group="Behavior"
-			Type="Boolean"
-		#tag EndViewProperty
-		#tag ViewProperty
-			Name="siaLastParamsBeforeInit"
-			Group="Behavior"
-			Type="String"
-		#tag EndViewProperty
 	#tag EndViewBehavior
 End Class
 #tag EndClass

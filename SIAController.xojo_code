@@ -2,7 +2,9 @@
 Protected Class SIAController
 	#tag Method, Flags = &h0
 		Sub close()
-		  siaSocket.Close
+		  if siaSocket <> nil then
+		    siaSocket.Close
+		  end
 		End Sub
 	#tag EndMethod
 
@@ -10,16 +12,13 @@ Protected Class SIAController
 		Private Sub ConnectedEvent(thisSocket As IPCSocket)
 		  // if other instance is already listening, parse parameters and close
 		  if not responseRecieved then
-		    responseRecieved = true
-		    otherInstanceExists = true
 		    dim urlSchemeParams as String = parseUrlSchemeWindows(System.CommandLine)
 		    if urlSchemeParams.Len > 0 then
 		      siaSocket.Write(urlSchemeParams)
 		    end
 		    siaSocket.Flush
 		    siaSocket.Close
-		    app.siaReactToResponse
-		    app.initApplication
+		    quit
 		  end
 		End Sub
 	#tag EndMethod
@@ -27,18 +26,14 @@ Protected Class SIAController
 	#tag Method, Flags = &h21
 		Private Sub DataAvailableEvent(thisSocket As IPCSocket)
 		  // url scheme is recieved here on windows
-		  if app.initApplicationDone then
-		    app.siaUseParams(thisSocket.ReadAll)
-		  else
-		    app.siaLastParamsBeforeInit = thisSocket.ReadAll
-		  end
+		  useParams(thisSocket.ReadAll)
 		End Sub
 	#tag EndMethod
 
 	#tag Method, Flags = &h21
 		Private Sub ErrorEvent(thisSocket As IPCSocket)
 		  // error 102 always occurs if another instance connects, passes an url and closes connection -> retry listening
-		  // error 103 is expected if other instance is already running -> pass url and close connection
+		  // error 103 is expected no other instance is running -> start listening
 		  // error 105 occurs if other instance is still listening (also if instance is closed, but did not close listening socket) -> should work on retry listening
 		  
 		  dim siaErrorCode as Integer = thisSocket.LastErrorCode
@@ -47,7 +42,7 @@ Protected Class SIAController
 		    errorCounter = errorCounter + 1
 		    if errorCounter >= maxErrors then
 		      siaSocket.Close
-		      app.initApplication // if something goes wrong with the IPCSocket, the application should still start
+		      InitApplication // if something goes wrong with the IPCSocket, the application should still start
 		      return
 		    end
 		  end
@@ -55,27 +50,44 @@ Protected Class SIAController
 		  // if no other instance is listening, make this the only instance and init application after listening
 		  if siaErrorCode = 103 then
 		    responseRecieved = true
-		    otherInstanceExists = false
 		  end
 		  
 		  // try reconnect/listen on all other error codes too
 		  if not responseRecieved then
 		    siaSocket.Close
 		    siaSocket.Connect
-		  elseif not otherInstanceExists then
+		  else
 		    siaSocket.Close
 		    siaSocket.Listen
 		  end
 		  
 		  if siaErrorCode = 103 then
-		    app.siaReactToResponse
-		    app.initApplication
+		    useParams(parseUrlSchemeWindows(System.CommandLine))
+		    InitApplication
 		  end
 		End Sub
 	#tag EndMethod
 
 	#tag Method, Flags = &h0
-		Function parseUrlSchemeMac(theEvent as AppleEvent) As String
+		Function HandleAppleEvent(theEvent As AppleEvent, eventClass As String) As Boolean
+		  if eventClass = "GURL" then
+		    dim urlSchemeParams as String = parseUrlSchemeMac(theEvent)
+		    useParams(urlSchemeParams)
+		    return true
+		  end if
+		  return false
+		End Function
+	#tag EndMethod
+
+	#tag Method, Flags = &h0
+		Sub initApplicationDone()
+		  isInitApplicationDone = true
+		  useParams(lastUrlParamsBeforeInit)
+		End Sub
+	#tag EndMethod
+
+	#tag Method, Flags = &h21
+		Private Function parseUrlSchemeMac(theEvent as AppleEvent) As String
 		  // myscheme:hello_world -> hello_world
 		  try
 		    dim urlSchemeParts() as string = DecodeURLComponent(theEvent.StringParam("----")).DefineEncoding(encodings.UTF8).Split(":")
@@ -86,13 +98,12 @@ Protected Class SIAController
 		End Function
 	#tag EndMethod
 
-	#tag Method, Flags = &h0
-		Function parseUrlSchemeWindows(callText as String) As Text
+	#tag Method, Flags = &h21
+		Private Function parseUrlSchemeWindows(callText as String) As Text
 		  // "C:\url-scheme.exe" "myscheme:hello_world" -> hello_world
 		  // parser also handles spaces in path ("C:\url scheme.exe" "myscheme:hello_world")->(hello_world) as well as colons in url scheme ("C:\url-scheme.exe" "myscheme:hello_world:2")->(hello_world:2)
 		  // parser can't handle multiple  double quotes after another, yet. Will be fixed
 		  // but parser can't recognize, if there is more than one command line argument ("C:\url-scheme.exe" "myscheme:hello_world" "something")->(hello_world" "something)
-		  return callText.Encoding.internetName.ToText
 		  dim callTextParts() As Text = callText.ToText.Split("""")
 		  dim urlSchemeParts() As Text
 		  dim urlScheme As Text
@@ -160,10 +171,35 @@ Protected Class SIAController
 
 	#tag Method, Flags = &h0
 		Sub searchOtherInstances()
-		  prepareSIASocket
-		  siaSocket.Connect
+		  #if TargetWindows then
+		    prepareSIASocket
+		    siaSocket.Connect
+		  #elseif TargetMacOS
+		    InitApplication
+		  #endif
 		End Sub
 	#tag EndMethod
+
+	#tag Method, Flags = &h21
+		Private Sub useParams(urlSchemeParams As String)
+		  if isInitApplicationDone then
+		    if urlSchemeParams.Len > 0 then
+		      DataAvailable(urlSchemeParams)
+		    end
+		  else
+		    lastUrlParamsBeforeInit = urlSchemeParams
+		  end
+		End Sub
+	#tag EndMethod
+
+
+	#tag Hook, Flags = &h0
+		Event DataAvailable(data As String)
+	#tag EndHook
+
+	#tag Hook, Flags = &h0
+		Event InitApplication()
+	#tag EndHook
 
 
 	#tag Property, Flags = &h21
@@ -171,15 +207,23 @@ Protected Class SIAController
 	#tag EndProperty
 
 	#tag Property, Flags = &h21
+		Private isInitApplicationDone As Boolean
+	#tag EndProperty
+
+	#tag Property, Flags = &h21
+		Private lastUrlParamsBeforeInit As String
+	#tag EndProperty
+
+	#tag Property, Flags = &h21
 		Private maxErrors As Integer = 5
 	#tag EndProperty
 
-	#tag Property, Flags = &h0
-		otherInstanceExists As Boolean
+	#tag Property, Flags = &h21
+		Private otherInstanceExists As Boolean
 	#tag EndProperty
 
-	#tag Property, Flags = &h0
-		responseRecieved As Boolean
+	#tag Property, Flags = &h21
+		Private responseRecieved As Boolean
 	#tag EndProperty
 
 	#tag Property, Flags = &h21
@@ -207,16 +251,6 @@ Protected Class SIAController
 			Visible=true
 			Group="ID"
 			Type="String"
-		#tag EndViewProperty
-		#tag ViewProperty
-			Name="otherInstanceExists"
-			Group="Behavior"
-			Type="Boolean"
-		#tag EndViewProperty
-		#tag ViewProperty
-			Name="responseRecieved"
-			Group="Behavior"
-			Type="Boolean"
 		#tag EndViewProperty
 		#tag ViewProperty
 			Name="Super"
