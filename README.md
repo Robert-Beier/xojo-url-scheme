@@ -11,7 +11,7 @@ Using a URL scheme under Mac and Windows with a single instance application
 
 ### Windows
 
-- run as administrator at first run to make registry entrances (in a final application, this should happen in the installer)
+- run as administrator at first run to make registry entries (in a final application, this should happen in the installer)
 - type myscheme:hello_world in browser url bar
 
 ## Modifications for usage in your application
